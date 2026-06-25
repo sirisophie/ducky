@@ -420,6 +420,16 @@ async function getPhotos() {
   });
 }
 
+async function getPhoto(id) {
+  const db = await openGalleryDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, "readonly");
+    const request = tx.objectStore(storeName).get(id);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
 async function savePhoto(file) {
   const db = await openGalleryDb();
   const record = {
@@ -433,6 +443,16 @@ async function savePhoto(file) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(storeName, "readwrite");
     tx.objectStore(storeName).put(record);
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function deletePhoto(id) {
+  const db = await openGalleryDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, "readwrite");
+    tx.objectStore(storeName).delete(id);
     tx.oncomplete = resolve;
     tx.onerror = () => reject(tx.error);
   });
@@ -462,6 +482,7 @@ async function renderGalleryPage(page) {
         <input class="hidden" id="photo-upload" type="file" accept="image/*" multiple>
       </div>
       <div id="gallery-content" class="gallery-grid" aria-live="polite"></div>
+      <div id="photo-viewer" class="photo-viewer hidden" role="dialog" aria-modal="true" aria-label="Gallery photo viewer"></div>
     </main>
   `;
   await refreshGallery();
@@ -482,11 +503,53 @@ async function refreshGallery() {
   content.innerHTML = photos.map((photo) => {
     const src = URL.createObjectURL(photo.blob);
     return `
-      <figure class="photo-tile">
+      <button class="photo-tile" type="button" data-photo-id="${photo.id}" aria-label="Open ${photo.name || "Ducky gallery photo"}">
         <img src="${src}" alt="${photo.name || "Ducky gallery photo"}">
-      </figure>
+      </button>
     `;
   }).join("");
+}
+
+async function openPhotoViewer(id) {
+  const viewer = document.querySelector("#photo-viewer");
+  if (!viewer) return;
+
+  const photo = await getPhoto(id);
+  if (!photo) return;
+
+  const src = URL.createObjectURL(photo.blob);
+  viewer.className = "photo-viewer";
+  viewer.innerHTML = `
+    <div class="photo-viewer-panel">
+      <div class="photo-viewer-toolbar">
+        <button class="secondary-button" type="button" data-action="close-photo">Close</button>
+        <div class="photo-viewer-actions">
+          <button class="secondary-button" type="button" data-action="download-photo" data-photo-id="${photo.id}">Download</button>
+          <button class="danger-button" type="button" data-action="delete-photo" data-photo-id="${photo.id}">Delete</button>
+        </div>
+      </div>
+      <img class="photo-viewer-image" src="${src}" alt="${photo.name || "Ducky gallery photo"}">
+    </div>
+  `;
+}
+
+function closePhotoViewer() {
+  const viewer = document.querySelector("#photo-viewer");
+  if (!viewer) return;
+  viewer.className = "photo-viewer hidden";
+  viewer.innerHTML = "";
+}
+
+async function downloadPhoto(id) {
+  const photo = await getPhoto(id);
+  if (!photo) return;
+
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(photo.blob);
+  link.download = photo.name || `ducky-photo-${photo.id}.jpg`;
+  document.body.append(link);
+  link.click();
+  link.remove();
 }
 
 async function render() {
@@ -515,6 +578,33 @@ app.addEventListener("click", async (event) => {
   const actionTarget = event.target.closest("[data-action='clear-gallery']");
   if (actionTarget) {
     await clearPhotos();
+    closePhotoViewer();
+    await refreshGallery();
+    return;
+  }
+
+  const photoTarget = event.target.closest("[data-photo-id]");
+  if (photoTarget && photoTarget.classList.contains("photo-tile")) {
+    await openPhotoViewer(photoTarget.dataset.photoId);
+    return;
+  }
+
+  const closeTarget = event.target.closest("[data-action='close-photo']");
+  if (closeTarget || event.target.id === "photo-viewer") {
+    closePhotoViewer();
+    return;
+  }
+
+  const downloadTarget = event.target.closest("[data-action='download-photo']");
+  if (downloadTarget) {
+    await downloadPhoto(downloadTarget.dataset.photoId);
+    return;
+  }
+
+  const deleteTarget = event.target.closest("[data-action='delete-photo']");
+  if (deleteTarget) {
+    await deletePhoto(deleteTarget.dataset.photoId);
+    closePhotoViewer();
     await refreshGallery();
   }
 });
@@ -528,4 +618,9 @@ app.addEventListener("change", async (event) => {
 });
 
 window.addEventListener("hashchange", render);
+window.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    closePhotoViewer();
+  }
+});
 render();
