@@ -355,8 +355,13 @@ h1 {
 .photo-viewer-panel {
   display: grid;
   width: min(100%, 460px);
-  max-height: 100%;
+  max-height: calc(100dvh - 32px);
   gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  box-shadow: var(--shadow);
 }
 
 .photo-viewer-toolbar {
@@ -373,11 +378,11 @@ h1 {
 
 .photo-viewer-image {
   width: 100%;
-  max-height: calc(100vh - 120px);
-  max-height: calc(100dvh - 120px);
+  max-height: calc(100vh - 156px);
+  max-height: calc(100dvh - 156px);
   object-fit: contain;
   border-radius: 8px;
-  background: var(--paper);
+  background: #171410;
 }
 
 .hidden {
